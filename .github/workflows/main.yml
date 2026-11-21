@@ -1,0 +1,34 @@
+
+name: Sincronizar Universal Web
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar fork
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Obtener repositorio original
+        run: |
+          git remote add upstream https://github.com/AppNetDeveloper/universal-web.git
+          git fetch upstream main
+
+      - name: Sincronizar sin sobrescribir cambios propios
+        run: |
+          git merge --ff-only upstream/main
+          git push origin HEAD:main
