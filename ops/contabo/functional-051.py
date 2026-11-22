@@ -69,6 +69,27 @@ def copy_tree(source, destination, ignored=()):
             shutil.copyfile(name, target)
 
 
+def snapshot_database(source, target):
+    with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as src:
+        with closing(sqlite3.connect(target)) as dst:
+            src.backup(dst)
+            check(dst.execute("PRAGMA journal_mode=DELETE").fetchone() == ("delete",),
+                  "Candidate journal mode could not be normalized")
+
+
+def complete_schema_15(database):
+    with closing(sqlite3.connect(database)) as db, db:
+        db.execute("BEGIN")
+        for table in ("pages", "posts"):
+            columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+            if "path" not in columns:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN path TEXT NOT NULL DEFAULT ''")
+            if "content_at" not in columns:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN content_at TEXT")
+                db.execute(f"UPDATE {table} SET content_at = updated_at WHERE content_at IS NULL")
+            db.execute(f"CREATE INDEX IF NOT EXISTS {table}_path ON {table} (site_id, path)")
+
+
 def sanitize(database, data, password):
     hashed = subprocess.run([PHP, "-r", "echo password_hash(stream_get_contents(STDIN), PASSWORD_DEFAULT);"],
                             input=password, text=True, capture_output=True, check=True).stdout
@@ -209,8 +230,8 @@ def main():
     db_source, media_source = backup / "universal.sqlite", backup / "media.tar.gz"
     for path in (db_source, media_source):
         check(path.is_file() and not path.is_symlink(), "Invalid backup input")
-    check(not any(Path(str(db_source) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")),
-          "Backup must be standalone")
+    check(not any(backup.is_relative_to(path) for path in (PRODUCTION, STAGING, release)),
+          "Backup input is under a protected tree")
     before = tuple(fingerprint(path) for path in (db_source, media_source, theme / "layout.php"))
     with tempfile.TemporaryDirectory(prefix="http-drill-", dir=workspace) as tmp:
         root = Path(tmp)
@@ -220,17 +241,22 @@ def main():
         STAGE = "prepare"
         copy_tree(release, app, {"data", ".git"})
         media = app / "public/media"
-        media.mkdir(exist_ok=True)
+        if media.exists():
+            shutil.rmtree(media)
+        media.mkdir()
         extract_media(media_source, media, PurePosixPath("media"))
         custom = app / "themes/carlosbarcelo"
+        if custom.exists():
+            shutil.rmtree(custom)
         custom.mkdir()
         copy_tree(theme, custom)
         db = data / "universal.sqlite"
-        shutil.copyfile(db_source, db)
+        snapshot_database(db_source, db)
         check(inspect(db, media)[0] == 15, "Functional drill needs an already-verified schema 15 backup")
         core = (app / "app/core.php").read_text()
         check(re.search(r"""const UW_VERSION = ['"]0\.5\.1['"];""", core), "Incorrect release version")
         password, slug = secrets.token_urlsafe(24), "uw-drill-" + secrets.token_hex(6)
+        complete_schema_15(db)
         site = sanitize(db, data, password)
         # Confirm the custom renderer ran, without modifying the source theme or logging its HTML.
         layout, probe = custom / "layout.php", root / "theme-rendered"

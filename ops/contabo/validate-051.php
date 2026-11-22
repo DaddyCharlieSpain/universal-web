@@ -29,6 +29,16 @@ function databaseChecks(SQLite3 $db): array
     requireCheck($db->querySingle('PRAGMA integrity_check') === 'ok', 'Integridad SQLite incorrecta');
     requireCheck($db->querySingle('PRAGMA foreign_key_check') === null, 'Referencias SQLite no válidas');
     requireCheck((string) $db->querySingle("SELECT value FROM meta WHERE key = 'schema_version'") === (string) EXPECTED_SCHEMA, 'Esquema SQLite inesperado');
+    foreach (['pages', 'posts'] as $table) {
+        $columns = [];
+        $result = $db->query("PRAGMA table_info($table)");
+        while ($column = $result->fetchArray(SQLITE3_ASSOC)) {
+            $columns[] = $column['name'];
+        }
+        $result->finalize();
+        $missing = array_diff(['path', 'content_at'], $columns);
+        requireCheck($missing === [], "Esquema 15 incompleto en $table: " . implode(', ', $missing));
+    }
     $counts = [];
     foreach (['sites', 'pages', 'posts', 'media', 'users', 'site_domains'] as $table) {
         $counts[$table] = $db->querySingle("SELECT count(*) FROM $table");

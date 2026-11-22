@@ -212,6 +212,15 @@ sudo unshare --net -- /bin/sh -ec '
 ' sh "$drill" "$(readlink /proc/self/ns/net)"
 ```
 
+En Contabo se observó que el backup del día 21 declaraba esquema 15
+aunque faltaban `path` y `content_at` en páginas y entradas. El ensayo
+funcional toma una instantánea mediante la API de SQLite (incluye el WAL
+si procede) y completa las columnas e índices exclusivamente en esa
+candidata desechable. Sustituye los medios y el tema incluidos en la
+release por el backup y el tema de staging, respectivamente.
+El validador de staging rechaza un esquema 15 incompleto. Antes del corte
+se requiere validar la estructura de la candidata definitiva por separado.
+
 El ensayo exige un namespace distinto del host, únicamente loopback y
 ausencia de ruta IPv4 externa. La candidata nace en un directorio
 privado temporal. El cliente comprueba portada y ejecución del layout
