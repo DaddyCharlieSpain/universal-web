@@ -1,5 +1,3 @@
-
-
 name: Contabo Universal Web
 
 on:
@@ -12,6 +10,9 @@ on:
         options:
           - health
           - prepare-051
+          - validate-051
+          - backup-status
+          - test-051
 
 permissions:
   contents: read
@@ -44,7 +45,13 @@ jobs:
         env:
           OPERATION: ${{ inputs.operation }}
         run: |
-          ssh -i ~/.ssh/contabo_deploy \
+          set -eu
+          case "$OPERATION" in
+            health|prepare-051|validate-051|backup-status|test-051) ;;
+            *) exit 64 ;;
+          esac
+          ssh -n -T -i ~/.ssh/contabo_deploy \
+            -o ClearAllForwardings=yes \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o BatchMode=yes \
