@@ -171,3 +171,87 @@ El gate SSH debe seguir limitado a las operaciones exactas ya autorizadas.
 Mantener despliegue, restauración, rollback y rclone fuera de la llave de
 Actions. Revisar permisos de toda la ruta del gate, claves, credenciales SMTP,
 rclone y API de Pages. Conservar la comprobación estricta de la huella SSH.
+
+## Ensayo funcional HTTP de la candidata
+
+Se verificó la restauración 15 → 15 de la copia R2 del 21 de noviembre de
+2026 y la migración real 14 → 15 de la copia del 19 de noviembre. Usar el
+snapshot ya comprobado de esquema 15 para este ensayo. La base y el tar
+de medios son las únicas entradas del backup. El script omite el config
+original y genera su propia clave, usuario y contraseña efímeros. La
+contraseña solo pasa a PHP por stdin y al servidor HTTP local, sin logs.
+Se desactivan en la copia las credenciales importadas, los destinos de
+publicación, SMTP, webhooks, offsite e IndexNow. El PHP de ensayo no
+puede invocar sendmail ni ejecutar comandos del sistema. Aislar la red
+también protege de conexiones que pueda intentar el código del tema.
+
+Desde la sesión existente en Contabo, como operador sin privilegios, con
+la rama del ensayo incorporada a la copia de scripts y el backup verificado:
+
+```bash
+drill="$HOME/uw-restore-051.m4wZaBLa"
+umask 077
+export UW_DRILL_HOST_NETNS=$(readlink /proc/self/ns/net)
+unshare --user --map-current-user --net -- sh -ec '
+  ip link set lo up
+  exec python3 "$1/repo/ops/contabo/functional-051.py" "$1/objects/2026-11-21_03-00-01" "$1"
+' sh "$drill"
+```
+
+Si el VPS prohíbe namespaces de usuario sin privilegios, el administrador
+puede crear únicamente el namespace de red y bajar al usuario operativo
+antes de ejecutar Python. Revisar primero el script y conservar la misma
+restricción de una sola interfaz de loopback. No ejecutar el ensayo en la
+red del host.
+
+```bash
+sudo unshare --net -- /bin/sh -ec '
+  /usr/sbin/ip link set lo up
+  export UW_DRILL_HOST_NETNS="$2"
+  exec /usr/sbin/runuser -u carlosadmin -- /usr/bin/python3 "$1/repo/ops/contabo/functional-051.py" "$1/objects/2026-11-21_03-00-01" "$1"
+' sh "$drill" "$(readlink /proc/self/ns/net)"
+```
+
+El ensayo exige un namespace distinto del host, únicamente loopback y
+ausencia de ruta IPv4 externa. La candidata nace en un directorio
+privado temporal. El cliente comprueba portada y ejecución del layout
+copiado, rechazo de acceso anónimo y contraseña inválida, login y panel,
+listados, creación, edición y lectura HTTP de una página de prueba,
+subida y descarga de un medio sintético y cierre de sesión. Se
+contrastan huellas del backup y del layout de staging. La edición, los
+uploads y las sesiones solo se escriben bajo el directorio de ensayo.
+El servidor se termina y la candidata se retira al salir. Si hay un
+fallo, guardar solo la línea `functional_051=FAIL stage=...`. Tras una
+interrupción abrupta, localizar y revisar únicamente los directorios
+`http-drill-*` bajo el workspace privado y retirar los residuos de este
+ensayo. El rollback de producción descrito arriba sigue siendo un
+procedimiento separado.
+
+### Resultado en GitHub Actions
+
+El gate puede exponer solo `functional-051-status`. El trabajo de Actions
+consulta un resultado reciente. No inicia PHP, no acepta rutas ni
+argumentos remitidos por SSH y no tiene acceso a backups ni logs privados.
+
+Tras revisar los cambios, instalar como root la consulta en
+`/usr/local/libexec/universal-web/functional-051-status.sh` y crear
+`/var/lib/universal-web-drill` con propietario root y modo 0755. Añadir al
+gate una coincidencia exacta `functional-051-status` que ejecute la consulta
+sin argumentos, conservando el rechazo por defecto. Registrar el éxito
+solo después de observar la línea completa del ensayo:
+
+```bash
+sudo install -d -m 0755 -o root -g root /var/lib/universal-web-drill
+sudo install -m 0755 -o root -g root   "$drill/repo/ops/contabo/functional-051-status.sh"   /usr/local/libexec/universal-web/functional-051-status.sh
+printf '%s\n' 'functional_051=OK isolation=OK http=OK auth=OK admin=OK content=OK media=OK theme=OK' |
+  sudo tee /var/lib/universal-web-drill/functional-051.status >/dev/null
+sudo chown root:root /var/lib/universal-web-drill/functional-051.status
+sudo chmod 0644 /var/lib/universal-web-drill/functional-051.status
+```
+
+Si se repite el ensayo, invalidar el resultado anterior antes de empezar.
+Actions reporta la hora de registro y devuelve error si el resultado
+falta, no es válido o tiene más de 24 horas. Este recibo es una
+atestación administrativa del ensayo, no una ejecución remota. La
+preview de Cloudflare Pages, la comprobación visual y el flujo de
+alertas quedan como pruebas separadas.

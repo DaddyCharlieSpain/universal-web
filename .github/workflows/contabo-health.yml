@@ -13,6 +13,7 @@ on:
           - validate-051
           - backup-status
           - test-051
+          - functional-051-status
 
 permissions:
   contents: read
@@ -47,7 +48,7 @@ jobs:
         run: |
           set -eu
           case "$OPERATION" in
-            health|prepare-051|validate-051|backup-status|test-051) ;;
+            health|prepare-051|validate-051|backup-status|test-051|functional-051-status) ;;
             *) exit 64 ;;
           esac
           ssh -n -T -i ~/.ssh/contabo_deploy \
