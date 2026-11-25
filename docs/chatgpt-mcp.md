@@ -196,3 +196,17 @@ confirmarse. Las siete herramientas de lectura se han ejecutado con
   host, método, ruta sin parámetros y estado. Restaurar la directiva
   de registro anterior al terminar. Conservar la validación del
   emisor, audiencia, sujeto, cliente, expiración y alcance.
+
+### Comprobaciones públicas de aislamiento
+
+Desde fuera de Contabo, `initialize`, `tools/list` y `tools/call`
+(`post_list`) devolvieron HTTP 401 sin token. También se observó
+HTTP 401 en UserInfo y HTTP 404 en las rutas de administración de
+staging y el descubrimiento del realm `master`. El catálogo recibido
+desde ChatGPT contiene las siete herramientas esperadas de lectura.
+
+Antes de dar por cerrado el laboratorio, comprobar en Cloudflare que
+el token del túnel que se compartió accidentalmente fue invalidado
+y que solo permanece conectado el conector autorizado. La prueba HTTP
+no acredita la rotación. El despliegue MCP en producción requiere
+autorización específica.
