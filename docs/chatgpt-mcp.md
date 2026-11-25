@@ -169,8 +169,11 @@ El 25 de noviembre de 2026 se verificó el complemento en el laboratorio
 sintético `universal-web-mcp-lab`. La conexión OAuth llegó a Keycloak y
 `post_list` devolvió cuatro entradas (tres publicadas y un borrador).
 También se probaron desde ChatGPT `post_get`, `page_list`, `page_get`,
-`media_list` y `seo_analyze`. `seo_audit` devolvió JSON-RPC `-32603`
-y queda pendiente investigar la excepción en el CMS de staging.
+`media_list` y `seo_analyze`. `seo_audit` devolvió inicialmente JSON-RPC
+`-32603`. En dos llamadas posteriores devolvió 100/100, sin incidencias
+para el contenido sintético. La causa del error inicial sigue sin
+confirmarse. Las siete herramientas de lectura se han ejecutado con
+éxito desde ChatGPT.
 
 - El cliente de ChatGPT usa PKCE S256 y la URI de retorno exacta que
   muestra ChatGPT. El alcance editorial es `uw:read`. Keycloak debe
