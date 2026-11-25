@@ -1,0 +1,13 @@
+[Unit]
+Description=Universal Web - Cloudflare Pages Publisher
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/local/sbin/uw-pages-publish.sh
+TimeoutStartSec=600
+PrivateTmp=true
+NoNewPrivileges=true

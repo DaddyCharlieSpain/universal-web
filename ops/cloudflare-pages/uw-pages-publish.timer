@@ -1,0 +1,11 @@
+[Unit]
+Description=Universal Web - Automatic Pages Publishing
+
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=uw-pages-publish.service
+
+[Install]
+WantedBy=timers.target
