@@ -162,3 +162,34 @@ El proxy debe devolver 404 fuera de las rutas expresamente permitidas:
 
 Referencias: https://developers.cloudflare.com/tunnel/concepts/routing/
 y https://www.keycloak.org/server/reverseproxy.
+
+## Validación en ChatGPT y Contabo
+
+El 25 de noviembre de 2026 se verificó el complemento en el laboratorio
+sintético `universal-web-mcp-lab`. La conexión OAuth llegó a Keycloak y
+`post_list` devolvió cuatro entradas (tres publicadas y un borrador).
+También se probaron desde ChatGPT `post_get`, `page_list`, `page_get`,
+`media_list` y `seo_analyze`. `seo_audit` devolvió JSON-RPC `-32603`
+y queda pendiente investigar la excepción en el CMS de staging.
+
+- El cliente de ChatGPT usa PKCE S256 y la URI de retorno exacta que
+  muestra ChatGPT. El alcance editorial es `uw:read`. Keycloak debe
+  aceptar también los ámbitos OIDC de la solicitud. En el intento
+  observado fueron `openid email offline_access uw:read`. El cliente
+  tiene `email`, `profile`, `offline_access` y `uw:read` como
+  ámbitos opcionales. `offline_access` permite renovar la sesión.
+- El proxy publica `userinfo` únicamente para el realm de staging.
+  Sin token, debe devolver 401. Las rutas de administración del CMS y
+  de Keycloak siguen fuera de las rutas permitidas.
+- Si el canje devuelve 200, la introspección 401 y el MCP 503, revisar
+  la autenticación del cliente de introspección. El identificador es
+  la URL del recurso y contiene dos puntos. El commit `4da07ce`
+  codifica el identificador y el secreto antes de construir HTTP Basic.
+- Tras corregir la introspección, usar **Actualizar herramientas** en
+  los detalles del complemento. La presencia de una cuenta vinculada
+  solo acredita la vinculación. Para probar la lectura, seleccionar
+  el complemento en un chat nuevo y ejecutar `post_list`.
+- Limitar el diagnóstico HTTP al proxy de staging y registrar solo
+  host, método, ruta sin parámetros y estado. Restaurar la directiva
+  de registro anterior al terminar. Conservar la validación del
+  emisor, audiencia, sujeto, cliente, expiración y alcance.
