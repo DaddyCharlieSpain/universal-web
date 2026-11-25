@@ -291,3 +291,8 @@ Una lectura independiente mediante el complemento original confirmó
 la persistencia del borrador y sus metadatos. La prueba aislada en
 Contabo también pasó y verificó que la fila de publicación estática
 y el registro de contenido publicado permanecieron intactos.
+
+Una segunda edición autenticada actualizó solo el cuerpo Markdown del
+borrador ID 6. La lectura posterior por el complemento original confirmó
+el texto nuevo, el SEO idéntico, el estado `draft` y la fecha de
+publicación nula.
