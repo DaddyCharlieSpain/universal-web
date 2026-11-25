@@ -128,3 +128,37 @@ No se introducen tablas ni se modifica el publicador Wrangler en esta fase.
 Referencias: https://www.keycloak.org/securing-apps/mcp-authz-server,
 https://www.keycloak.org/docs/latest/upgrading/ y
 https://developers.openai.com/plugins/build/auth.
+
+
+## Entrada HTTPS con Cloudflare Tunnel
+
+Propuesta pendiente de autorización DNS: `mcp-staging.carlosbarcelo.es`
+y `auth-staging.carlosbarcelo.es`, ambos en un túnel dedicado
+`uw-mcp-staging`. Inventariar `cloudflared` en el VPS y túneles en la
+cuenta antes de provisionar. Reutilizar el ejecutable si está instalado y
+soportado. Reutilizar un túnel solamente si es de staging y no sirve rutas
+productivas. Un túnel dedicado puede ejecutarse con un usuario propio,
+proxy dedicado en loopback y una credencial de conector en un fichero
+privado; no usar una credencial administrativa general de la cuenta.
+
+El proxy debe devolver 404 fuera de las rutas expresamente permitidas:
+
+- Host MCP: solo `/mcp/chatgpt` y
+  `/.well-known/oauth-protected-resource/mcp/chatgpt`.
+- Host OAuth: discovery OIDC/RFC 8414 para `uw-mcp-staging`, las rutas
+  necesarias del flujo OIDC y `login-actions` de ese realm, y los recursos
+  estáticos requeridos por la pantalla de login. Mantener `/admin`,
+  `/realms/master`, gestión y métricas fuera de la entrada. La
+  introspección requiere HTTPS y autenticación de cliente confidencial;
+  preferir una ruta privada si se dispone de TLS interno verificable.
+- No publicar el servidor Keycloak de diagnóstico en modo dev. Preparar
+  una instancia aislada con hostname HTTPS explícito y proxy confiable.
+  Mantener la validación de audiencia activa. No poner una pantalla de
+  Cloudflare Access delante del descubrimiento ni del intercambio OAuth.
+- Verificar 404 en las rutas administrativas, 401 con metadata en el MCP
+  anónimo y el recorrido OAuth real antes de ampliar el acceso. La reversión
+  consiste en retirar las rutas nuevas, parar el conector dedicado y revocar
+  su credencial sin tocar DNS ni servicios existentes.
+
+Referencias: https://developers.cloudflare.com/tunnel/concepts/routing/
+y https://www.keycloak.org/server/reverseproxy.
