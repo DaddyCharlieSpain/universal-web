@@ -296,3 +296,89 @@ Una segunda edición autenticada actualizó solo el cuerpo Markdown del
 borrador ID 6. La lectura posterior por el complemento original confirmó
 el texto nuevo, el SEO idéntico, el estado `draft` y la fecha de
 publicación nula.
+
+## Fase 3: multimedia y preparación para producción
+
+La rama de integración añade dos herramientas de staging. La consulta
+de la biblioteca sigue usando `media_list` con `uw:read`.
+
+| Operación | Ámbitos requeridos |
+| --- | --- |
+| `draft_image_upload` | `uw:read` + `uw:drafts:media` |
+| `draft_cover_set` | `uw:read` + `uw:drafts:media` + `uw:drafts:write` |
+
+La subida recibe PNG o JPEG en base64 puro, hasta 32 KiB antes de
+normalizar, 1024 píxeles por lado y 512 KiB después de decodificar y
+reescribir con GD. El nombre debe ser simple y el texto alternativo
+es obligatorio. No hay descargas remotas, SVG ni sustitución de
+archivos existentes. La portada se selecciona por ID de una imagen
+local del mismo sitio, con formato, tamaño y ruta comprobados. La
+asignación usa la misma transacción y política de borrador que las
+ediciones de texto. La subida registra `mcp.draft.media.upload` y
+la asignación, `mcp.draft.update`.
+
+### Revisión técnica
+
+- Universal Web conserva la versión 0.5.1 y el esquema 15. No se añaden
+  tablas, migraciones ni dependencias de Composer o npm al CMS.
+  La subida requiere PHP GD con PNG y JPEG. SQLite y cURL siguen
+  interviniendo en persistencia e introspección respectivamente.
+- Se revisó la separación entre metadatos, catálogo, ejecución,
+  validación de claims y token local. Las pruebas de contrato cubren
+  expiración, `nbf`, token inactivo, emisor, audiencia, sujeto,
+  cliente y alcance. El servidor consulta Keycloak en cada solicitud.
+  Falta observar expiración y revocación con una sesión OAuth de
+  prueba en Contabo, sin registrar ni copiar el token.
+- Las escrituras quedan bajo el host, realm y sitio sintético
+  permitidos. El sitio productivo y sus credenciales quedan fuera
+  de la activación. El historial actual es acotado: si una
+  despublicación manual borra la fecha y el historial ya se purgó,
+  no hay prueba permanente de publicación anterior. Resolver este
+  límite antes de habilitar edición de borradores en producción.
+- El exportador copia el árbol multimedia completo de cada sitio.
+  Aislar físicamente raíz pública y base de staging. No vincular su
+  destino estático al proyecto Pages productivo. Las acciones
+  `mcp.draft.*` no marcan la fila de publicación. Se comprobó con
+  una fila centinela de publicación automática en SQLite sintético.
+  No se ejecutó Wrangler ni se alteró el publicador.
+- La prueba aislada pasó creación, edición y portada, rechazo por
+  ámbito, formato o tamaño, rechazo de portadas en publicados,
+  auditoría, `integrity_check` y `foreign_key_check`. Se ejecutó
+  con PHP WASM con GD en una copia desechable. Falta repetir en
+  Contabo y desde el complemento.
+
+### Despliegue y rollback
+
+1. Crear una copia consistente de la SQLite de laboratorio mediante
+   la API de backup de SQLite. Guardar de forma privada la revisión,
+   configuración y multimedia de staging. Verificar la copia con
+   `PRAGMA integrity_check` y `PRAGMA foreign_key_check`.
+2. Instalar la revisión fijada en una copia de trabajo independiente.
+   Comprobar que `UW_DATA`, la raíz pública y `public/media` resuelven
+   dentro del laboratorio y que GD admite PNG/JPEG. Ejecutar los dos
+   scripts de aceptación con datos temporales vacíos.
+3. Mantener el servicio productivo, las rutas DNS y el publicador.
+   Activar `chatgpt_mcp.draft_media_enabled = true` en el laboratorio.
+   Añadir `uw:drafts:media` como ámbito OIDC opcional del cliente de
+   staging y solicitarlo explícitamente en una sesión de prueba.
+   Actualizar herramientas. Probar con una imagen sintética y un
+   borrador de ensayo. Verificar auditoría y fila del publicador.
+4. Probar por separado la expiración y revocación en una sesión
+   desechable. Tras expirar o invalidar el token, una solicitud
+   que lo reutilice debe devolver 401. Probar también un token válido
+   con solo lectura. Debe quedar excluido del catálogo de escritura
+   y su llamada directa debe rechazarse. La renovación de ChatGPT
+   puede ocultar la expiración; comprobar el token concreto desde
+   un cliente de diagnóstico, sin imprimirlo.
+5. Para cortar multimedia, poner `draft_media_enabled = false` y
+   retirar el ámbito opcional. Revocar las concesiones y sesiones
+   correspondientes si procede. Si hay que volver atrás en código,
+   apuntar el servicio de staging a la revisión de fase 2 y
+   recargar solo ese servicio. Recuperar portada desde el historial.
+   Conservar la auditoría y evitar restaurar toda la base si basta
+   revertir la configuración.
+
+Para producción se requiere aprobación específica y una propuesta
+separada de identidad OAuth, aislamiento, tratamiento de activos
+exportados y marcador duradero de publicación previa. La rama no
+habilita la escritura en producción.

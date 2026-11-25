@@ -1429,7 +1429,7 @@ final class SiteService
     }
 
     /** Guarda un archivo en public/media/{web}/AAAA/MM/. $uploaded = viene de un formulario HTTP. */
-    public function storeMedia(string $tmp, string $originalName, string $alt = '', bool $uploaded = true, array $meta = []): array
+    public function storeMedia(string $tmp, string $originalName, string $alt = '', bool $uploaded = true, array $meta = [], bool $draftMedia = false): array
     {
         $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
         if (!isset(MEDIA_TYPES[$ext])) throw new UwError('Tipo de archivo no permitido. Permitidos: ' . implode(', ', array_keys(MEDIA_TYPES)));
@@ -1448,6 +1448,14 @@ final class SiteService
         if (!$isAv && $size > MEDIA_MAX_BYTES) throw new UwError('La imagen supera los ' . intdiv(MEDIA_MAX_BYTES, 1048576) . ' MB y no se ha podido reducir');
         $rel = $this->site['slug'] . '/' . date('Y/m');
         $dir = UW_PUBLIC . '/media/' . $rel;
+        if ($draftMedia) {
+            if ($this->site['slug'] !== 'universal-web-mcp-lab' || realpath(UW_PUBLIC . '/media') !== UW_PUBLIC . '/media') {
+                throw new UwError('Directorio multimedia de laboratorio no válido.');
+            }
+            for ($parent = $dir; $parent !== UW_PUBLIC . '/media'; $parent = dirname($parent)) {
+                if (is_link($parent)) throw new UwError('Directorio multimedia enlazado.');
+            }
+        }
         if (!is_dir($dir) && !mkdir($dir, 0775, true)) throw new UwError('No se puede escribir en la carpeta media');
         $base = slugify(pathinfo($originalName, PATHINFO_FILENAME)) ?: 'archivo';
         $file = substr($base, 0, 60) . '-' . bin2hex(random_bytes(3)) . '.' . $ext;
@@ -1457,14 +1465,24 @@ final class SiteService
         @chmod("$dir/$file", 0644);
         if ($ai && $opt) media_add_ai_xmp("$dir/$file"); // GD la reescribió sin metadatos
         if (!$isAv && empty($meta['keep_original'])) media_variants("$dir/$file", $ai); // 480w y 960w para el móvil (srcset)
-        $id = insert('media', [
-            'site_id' => $this->id(), 'path' => "$rel/$file", 'original_name' => $originalName, 'mime' => MEDIA_TYPES[$ext],
-            'size' => $size, 'alt' => mb_substr(trim($alt), 0, 500), 'created_at' => now(),
-            'title' => mb_substr(trim((string) ($meta['title'] ?? '')), 0, 200), 'kind' => media_kind(MEDIA_TYPES[$ext]),
-            'ai_generated' => $ai ? 1 : 0,
-        ]);
-        audit($this->id(), 'media.upload', $originalName);
-        $m = row('SELECT * FROM media WHERE id = ?', [$id]);
+        try {
+            if ($draftMedia) db()->beginTransaction();
+            $id = insert('media', [
+                'site_id' => $this->id(), 'path' => "$rel/$file", 'original_name' => $originalName, 'mime' => MEDIA_TYPES[$ext],
+                'size' => $size, 'alt' => mb_substr(trim($alt), 0, 500), 'created_at' => now(),
+                'title' => mb_substr(trim((string) ($meta['title'] ?? '')), 0, 200), 'kind' => media_kind(MEDIA_TYPES[$ext]),
+                'ai_generated' => $ai ? 1 : 0,
+            ]);
+            audit($this->id(), $draftMedia ? 'mcp.draft.media.upload' : 'media.upload', $originalName, $draftMedia ? ['media_id' => $id] : []);
+            $m = row('SELECT * FROM media WHERE id = ?', [$id]);
+            if ($draftMedia) db()->commit();
+        } catch (Throwable $error) {
+            if ($draftMedia) {
+                if (db()->inTransaction()) db()->rollBack();
+                @unlink("$dir/$file");
+            }
+            throw $error;
+        }
         return $m + ['url' => '/media/' . $m['path']] + ($opt ? ['optimized' => $opt['note']] : []);
     }
 

@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/mcp-chatgpt-media.php';
+
 const MCP_CHATGPT_PATH = '/mcp/chatgpt';
 const MCP_CHATGPT_METADATA = '/.well-known/oauth-protected-resource/mcp/chatgpt';
 const MCP_CHATGPT_SCOPE = 'uw:read';
@@ -29,6 +31,7 @@ function mcp_chatgpt_config(): ?array
         && $cfg['host'] === 'mcp-staging.carlosbarcelo.es'
         && $cfg['issuer'] === 'https://auth-staging.carlosbarcelo.es/realms/uw-mcp-staging'
         && $cfg['site_slug'] === 'universal-web-mcp-lab';
+    $cfg['draft_media_enabled'] = $cfg['drafts_enabled'] && ($cfg['draft_media_enabled'] ?? false) === true;
     return $cfg;
 }
 
@@ -143,19 +146,25 @@ function mcp_chatgpt_validate_draft_args(array $args, array $schema): bool
     return true;
 }
 
-function mcp_chatgpt_save_draft(array $args): array
+function mcp_chatgpt_draft_site(): SiteService
 {
     $site = site_by_id((int) McpContext::$token['site_id']);
     if (($site['slug'] ?? null) !== 'universal-web-mcp-lab') throw new UwError('Sitio de ensayo no válido.');
-    $svc = new SiteService($site);
+    return new SiteService($site);
+}
+
+function mcp_chatgpt_save_draft(array $args, ?int $coverId = null): array
+{
+    $svc = mcp_chatgpt_draft_site();
     $id = $args['id'] ?? null;
     unset($args['id']);
-    if ($args === []) throw new UwError('Indica al menos un campo que editar.');
+    if ($args === [] && $coverId === null) throw new UwError('Indica al menos un campo que editar.');
 
     // Serializa la comprobación de estado y el guardado frente a otros escritores SQLite.
     $db = db();
     $db->exec('BEGIN IMMEDIATE');
     try {
+        if ($coverId !== null) $args['cover_image'] = mcp_chatgpt_image_url($svc, $coverId);
         $post = $svc->savePost($args + ['status' => 'draft'], $id, draftOnly: true);
         $db->exec('COMMIT');
     } catch (Throwable $error) {
@@ -165,7 +174,7 @@ function mcp_chatgpt_save_draft(array $args): array
     return $post;
 }
 
-function mcp_chatgpt_dispatch(array $message, bool $canWriteDrafts = false): ?array
+function mcp_chatgpt_dispatch(array $message, bool $canWriteDrafts = false, bool $canUseMedia = false): ?array
 {
     $id = $message['id'] ?? null;
     $method = $message['method'] ?? null;
@@ -178,14 +187,23 @@ function mcp_chatgpt_dispatch(array $message, bool $canWriteDrafts = false): ?ar
         $params = is_array($message['params'] ?? null) ? $message['params'] : [];
         $name = $params['name'] ?? null;
         $draftTools = mcp_chatgpt_draft_tools();
-        if (is_string($name) && isset($draftTools[$name])) {
-            if (!$canWriteDrafts) return mcp_error($id, -32602, 'Draft write scope required');
+        $attach = $name === 'draft_cover_set';
+        $upload = $name === 'draft_image_upload';
+        if (is_string($name) && ($attach || $upload || isset($draftTools[$name]))) {
+            if ((($attach || $upload) && !$canUseMedia) || (!$upload && !$canWriteDrafts)) {
+                return mcp_error($id, -32602, 'Required OAuth scope missing');
+            }
+            $schema = $attach || $upload ? mcp_chatgpt_media_tool($attach)['inputSchema'] : $draftTools[$name]['inputSchema'];
             $args = $params['arguments'] ?? null;
-            if (!is_array($args) || !mcp_chatgpt_validate_draft_args($args, $draftTools[$name]['inputSchema'])) {
+            if (!is_array($args) || !mcp_chatgpt_validate_draft_args($args, $schema)) {
                 return mcp_error($id, -32602, 'Invalid draft arguments');
             }
             try {
-                $result = ['post' => mcp_chatgpt_save_draft($args)];
+                $result = match (true) {
+                    $upload => ['media' => mcp_chatgpt_image_upload(mcp_chatgpt_draft_site(), $args)],
+                    $attach => ['post' => mcp_chatgpt_save_draft(['id' => $args['id']], $args['media_id'])],
+                    default => ['post' => mcp_chatgpt_save_draft($args)],
+                };
                 return ['jsonrpc' => '2.0', 'id' => $id, 'result' => [
                     'content' => [['type' => 'text', 'text' => json_enc($result)]],
                     'structuredContent' => $result, 'isError' => false,
@@ -217,6 +235,10 @@ function mcp_chatgpt_dispatch(array $message, bool $canWriteDrafts = false): ?ar
         }
         unset($tool);
         if ($canWriteDrafts) array_push($response['result']->tools, ...array_values(mcp_chatgpt_draft_tools()));
+        if ($canUseMedia) {
+            $response['result']->tools[] = mcp_chatgpt_media_tool(false);
+            if ($canWriteDrafts) $response['result']->tools[] = mcp_chatgpt_media_tool(true);
+        }
     }
     return $response;
 }
@@ -235,8 +257,11 @@ function mcp_chatgpt_handle(string $path, string $method): void
             http_response_code(405);
             return;
         }
+        $scopes = [MCP_CHATGPT_SCOPE];
+        if ($cfg['drafts_enabled']) $scopes[] = MCP_CHATGPT_DRAFT_SCOPE;
+        if ($cfg['draft_media_enabled']) $scopes[] = MCP_CHATGPT_MEDIA_SCOPE;
         json_response(['resource' => $cfg['resource'], 'authorization_servers' => [$cfg['issuer']],
-            'scopes_supported' => $cfg['drafts_enabled'] ? [MCP_CHATGPT_SCOPE, MCP_CHATGPT_DRAFT_SCOPE] : [MCP_CHATGPT_SCOPE],
+            'scopes_supported' => $scopes,
             'bearer_methods_supported' => ['header']]);
         return;
     }
@@ -282,7 +307,8 @@ function mcp_chatgpt_handle(string $path, string $method): void
     McpContext::$token = $token;
     Actor::set('token', (int) $token['id'], 'MCP ChatGPT (read-only)');
     $canWriteDrafts = $cfg['drafts_enabled'] && in_array(MCP_CHATGPT_DRAFT_SCOPE, explode(' ', $claims['scope']), true);
-    $response = mcp_chatgpt_dispatch($message, $canWriteDrafts);
+    $canUseMedia = $cfg['draft_media_enabled'] && in_array(MCP_CHATGPT_MEDIA_SCOPE, explode(' ', $claims['scope']), true);
+    $response = mcp_chatgpt_dispatch($message, $canWriteDrafts, $canUseMedia);
     if ($response === null) {
         http_response_code(202);
         return;
