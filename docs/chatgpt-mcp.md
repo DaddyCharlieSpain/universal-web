@@ -205,8 +205,9 @@ HTTP 401 en UserInfo y HTTP 404 en las rutas de administración de
 staging y el descubrimiento del realm `master`. El catálogo recibido
 desde ChatGPT contiene las siete herramientas esperadas de lectura.
 
-Antes de dar por cerrado el laboratorio, comprobar en Cloudflare que
-el token del túnel que se compartió accidentalmente fue invalidado
-y que solo permanece conectado el conector autorizado. La prueba HTTP
-no acredita la rotación. El despliegue MCP en producción requiere
-autorización específica.
+El 25 de noviembre de 2026 el administrador confirmó la rotación del
+token de `uw-mcp-staging` y su actualización en Contabo. El panel de
+Cloudflare mostró una réplica activa y dos rutas. Tras el reinicio,
+los metadatos de MCP y OAuth respondieron por HTTPS con 200 y
+`post_list` volvió a funcionar desde ChatGPT con cuatro entradas de
+prueba. El despliegue MCP en producción requiere autorización específica.
