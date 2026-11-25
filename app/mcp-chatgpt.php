@@ -38,8 +38,9 @@ function mcp_chatgpt_introspect(array $cfg, string $bearer): ?array
         CURLOPT_POSTFIELDS => http_build_query(['token' => $bearer, 'token_type_hint' => 'access_token']),
         CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded', 'Accept: application/json'],
         CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
-        CURLOPT_USERNAME => $cfg['introspection_id'],
-        CURLOPT_PASSWORD => $cfg['introspection_secret'],
+        // OAuth Basic credentials are form-encoded before joining them with a colon.
+        CURLOPT_USERNAME => urlencode($cfg['introspection_id']),
+        CURLOPT_PASSWORD => urlencode($cfg['introspection_secret']),
         CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
         CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_PROXY => '',
