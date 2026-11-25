@@ -84,4 +84,10 @@ expect((int) val("SELECT COUNT(*) FROM audit_log WHERE site_id = ? AND action = 
 expect(db()->query('PRAGMA integrity_check')->fetchAll(PDO::FETCH_COLUMN) === ['ok'], 'SQLite integrity');
 expect(db()->query('PRAGMA foreign_key_check')->fetchAll() === [], 'SQLite foreign keys');
 if (is_file(UW_PUBLIC . $media['url'])) unlink(UW_PUBLIC . $media['url']);
+$rateNow = 1800;
+for ($request = 0; $request < 120; $request++) {
+    expect(mcp_chatgpt_rate_limit('127.0.0.1', $rateNow), 'Requests within rate limit');
+}
+expect(!mcp_chatgpt_rate_limit('127.0.0.1', $rateNow), 'Rate limit blocks excessive requests');
+expect(mcp_chatgpt_rate_limit('127.0.0.1', $rateNow + 60), 'Rate window resets');
 echo "MCP isolated draft and media workflow OK\n";

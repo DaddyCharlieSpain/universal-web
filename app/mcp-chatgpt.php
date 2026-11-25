@@ -243,6 +243,32 @@ function mcp_chatgpt_dispatch(array $message, bool $canWriteDrafts = false, bool
     return $response;
 }
 
+/**
+ * Keep rejected requests out of the content database while still
+ * limiting introspection attempts. Hash buckets bound disk usage.
+ */
+function mcp_chatgpt_rate_limit(string $ip, int $now): bool
+{
+    $dir = UW_DATA . '/mcp-rate';
+    if (is_link($dir) || (!is_dir($dir) && !@mkdir($dir, 0700) && !is_dir($dir))) return false;
+    $path = $dir . '/' . substr(hash('sha256', $ip), 0, 3);
+    if (is_link($path)) return false;
+    $file = @fopen($path, 'c+b');
+    if ($file === false) return false;
+    try {
+        if (!flock($file, LOCK_EX)) return false;
+        $stored = stream_get_contents($file, 64);
+        $window = intdiv($now, 60);
+        $hits = preg_match('/^' . $window . ':([0-9]{1,3})$/D', (string) $stored, $match) ? (int) $match[1] : 0;
+        if ($hits >= 120) return false;
+        $next = $window . ':' . ($hits + 1);
+        return rewind($file) && ftruncate($file, 0)
+            && fwrite($file, $next) === strlen($next) && fflush($file);
+    } finally {
+        fclose($file);
+    }
+}
+
 function mcp_chatgpt_handle(string $path, string $method): void
 {
     header('Cache-Control: no-store');
@@ -280,7 +306,7 @@ function mcp_chatgpt_handle(string $path, string $method): void
         mcp_chatgpt_challenge($cfg);
         return;
     }
-    if (!throttle('mcp-chatgpt:' . client_ip(), 120, 60)) {
+    if (!mcp_chatgpt_rate_limit(client_ip(), time())) {
         header('Retry-After: 60');
         json_response(['error' => 'Too many requests'], 429);
         return;

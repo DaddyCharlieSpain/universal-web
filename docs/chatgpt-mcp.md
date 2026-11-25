@@ -398,3 +398,57 @@ ID 7 y el evento 28 registró la edición posterior del borrador ID 6.
 Las filas publicadas y las filas de `site_publish` del laboratorio
 coincidieron con la copia previa a la activación multimedia.
 Queda por ensayar caducidad y revocación real con un token desechable.
+
+### Ensayo OAuth con credenciales desechables
+
+`ops/contabo/mcp-oauth-drill.py` usa PHP nativo y el Keycloak de Contabo.
+Requiere iniciar sesión con privilegios para crear, configurar, consultar
+y eliminar un cliente y su cuenta de servicio en `uw-mcp-staging`, y
+leer el ámbito `uw:read` de ese realm. No requiere sudo. No modifica el
+cliente de ChatGPT, su usuario ni sus sesiones.
+
+El ensayo arranca una copia del CMS solo en loopback, con una copia
+SQLite consistente y escritura MCP desactivada. Solicita dos tokens
+reales de 30 segundos. Para ambos verifica que la introspección los
+devuelve activos y que `post_list` permite leer. Deja expirar el
+primero y revoca el segundo por el endpoint OAuth del realm. Verifica
+introspección HTTP 200 con `active=false` y MCP HTTP 401 en ambos casos,
+incluida la comprobación de que el token revocado aún no había vencido.
+Compara todas las filas SQLite y comprueba la integridad y las claves
+foráneas. El cliente se elimina al salir y se comprueba su ausencia.
+Si se interrumpe por SIGKILL, eliminar exclusivamente el cliente
+`uw-mcp-drill-…` cuyo identificador figure en la salida. Los informes
+solo contienen horas, eventos, códigos y resultados.
+
+El limitador de solicitudes MCP conserva una ventana de 120 peticiones
+por minuto en archivos privados y con bloqueo, separados de SQLite.
+Así un rechazo no modifica la base para actualizar los contadores.
+El espacio queda limitado a 4096 grupos. Si dos IP coinciden en un
+grupo, comparten su cuota. La prueba local cubre saturación y reinicio
+de la ventana. Aún falta ejecutar el ensayo completo en Contabo.
+
+### Plan de cambio productivo para revisión
+
+1. Aprobar explícitamente el alcance, la revisión y la ventana.
+   Empezar con `uw:read` y un cliente, usuario y enlace CMS propios
+   de producción. Definir qué borradores y medios pueden consultarse.
+   Mantener la configuración y los secretos fuera del repositorio.
+2. Verificar una copia consistente de SQLite, configuración y medios.
+   Identificar el árbol activo y conservar una revisión de vuelta.
+   Confirmar la configuración y el último despliegue recuperable de
+   Pages antes de cualquier cambio del CMS.
+3. Preparar un candidato con el endpoint desactivado y ejecutar las
+   pruebas del lector, proxy y OAuth contra un entorno separado.
+   Revisar rutas y límites sin habilitar escritura ni tareas de
+   publicación. La política duradera de publicación previa y la
+   exportación selectiva de medios son requisitos para plantear
+   escritura productiva.
+4. Tras aprobación, instalar la revisión con un procedimiento de
+   cambio reversible. Habilitar solo lectura y comprobar 401 anónimo,
+   catálogo, una lectura autorizada y ausencia de cambios en las
+   filas del publicador. Preservar el flujo estático existente.
+5. Ante cualquier fallo, desactivar el endpoint, retirar la concesión
+   y volver al árbol y configuración anteriores. Conservar SQLite
+   y auditoría salvo que exista una incidencia de datos que requiera
+   restaurar la copia consistente. Conservar producción y Pages
+   intactos durante el ensayo de staging.
