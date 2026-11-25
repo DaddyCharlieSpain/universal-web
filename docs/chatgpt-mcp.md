@@ -475,3 +475,30 @@ manteniendo la validación de audiencia.
    y auditoría salvo que exista una incidencia de datos que requiera
    restaurar la copia consistente. Conservar producción y Pages
    intactos durante el ensayo de staging.
+
+### Comprobación previa a la primera prueba productiva
+
+La candidata `62aec2b` superó en una copia de trabajo limpia los
+contratos MCP y la prueba de persistencia con PHP WASM, las
+comprobaciones de sintaxis del instalador y del ensayo OAuth y
+`git diff --check` del último cambio. El laboratorio activo siguió
+devolviendo el borrador sintético ID 6 con su portada y estado
+`draft`. El cierre OAuth de la candidata se ensayó por separado
+en Contabo.
+
+Línea base pública del 25 de noviembre de 2026: la portada de
+`carlosbarcelo.es` devolvió 200 y `www` redirigió con 301 al dominio
+principal. En el host CMS, tanto `/admin/` como la URL prevista de
+metadatos MCP redirigieron con 302 a Cloudflare Access. Aún no se
+ha verificado un trayecto público productivo compatible con OAuth
+de ChatGPT. La propuesta debe identificar el trayecto exacto de
+MCP y metadatos y mantener protegidos panel y rutas privadas.
+
+Antes de abrir una prueba de solo lectura, confirmar con el
+administrador la revisión instalada, una copia reciente y su
+restauración aislada, el despliegue Pages de retorno, la identidad
+OAuth productiva y los datos que se autorizan. El catálogo actual
+de lectura incluye borradores: si se desea probar solo con contenido
+publicado, debe aplicarse y verificarse ese límite antes de enlazar
+ChatGPT. No se verificaron esas condiciones sobre datos de producción
+durante esta revisión.
