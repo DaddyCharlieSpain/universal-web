@@ -344,8 +344,8 @@ la asignación, `mcp.draft.update`.
 - La prueba aislada pasó creación, edición y portada, rechazo por
   ámbito, formato o tamaño, rechazo de portadas en publicados,
   auditoría, `integrity_check` y `foreign_key_check`. Se ejecutó
-  con PHP WASM con GD en una copia desechable. Falta repetir en
-  Contabo y desde el complemento.
+  con PHP WASM con GD en una copia desechable y después con PHP
+  nativo en Contabo. La aceptación desde ChatGPT figura abajo.
 
 ### Despliegue y rollback
 
@@ -382,3 +382,15 @@ Para producción se requiere aprobación específica y una propuesta
 separada de identidad OAuth, aislamiento, tratamiento de activos
 exportados y marcador duradero de publicación previa. La rama no
 habilita la escritura en producción.
+
+### Aceptación multimedia en Contabo
+
+El instalador verificó la separación de rutas de SQLite, configuración
+y multimedia, pasó los contratos y la prueba SQLite con PHP nativo y
+validó la copia de retorno. El MCP anunció los tres ámbitos por HTTPS.
+Desde ChatGPT, el PNG sintético `mcp-fase3-prueba.png` quedó en la
+biblioteca con ID 7 y se asignó como portada del borrador ID 6.
+La consulta independiente confirmó la misma ruta en el medio y el
+borrador, estado `draft`, fecha de publicación nula y `noindex=true`.
+Queda por ensayar caducidad y revocación real con un token desechable
+y revisar la auditoría del intento en el servidor.
