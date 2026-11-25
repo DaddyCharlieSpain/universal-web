@@ -281,3 +281,13 @@ revisar el historial desde el panel local de laboratorio o restaurar
 una copia de su SQLite. Para revertir código, recuperar los archivos
 de la revisión de solo lectura y conservar la base sintética y la
 auditoría. No aplicar esa restauración a producción.
+
+### Resultado de aceptación en Contabo
+
+El 25 de noviembre de 2026, ChatGPT creó el borrador sintético
+`prueba-mcp-fase-2-staging` (ID 6) con `draft_create` y cambió
+únicamente título SEO, descripción y `noindex` con `draft_update`.
+Una lectura independiente mediante el complemento original confirmó
+la persistencia del borrador y sus metadatos. La prueba aislada en
+Contabo también pasó y verificó que la fila de publicación estática
+y el registro de contenido publicado permanecieron intactos.
