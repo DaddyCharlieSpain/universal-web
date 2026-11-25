@@ -46,4 +46,22 @@ foreach (['page_save', 'post_save', 'media_upload', 'publish_now', 'post_delete'
 }
 expect(isset(mcp_chatgpt_dispatch($rpc + ['method' => 'tools/call', 'params' => ['name' => 'post_get']])['result']), 'Allowed read');
 expect(mcp_chatgpt_dispatch(['jsonrpc' => '2.0', 'method' => 'notifications/initialized']) === null, 'Notification accepted');
-echo "MCP read-only contracts OK\n";
+$writeList = mcp_chatgpt_dispatch($rpc + ['method' => 'tools/list'], true)['result']->tools;
+expect(array_column($writeList, 'name') === ['post_get', 'draft_create', 'draft_update'], 'Draft catalog requires write scope');
+$schema = $writeList[2]['inputSchema'];
+expect($writeList[2]['securitySchemes'][0]['scopes'] === ['uw:read', 'uw:drafts:write'], 'Separate draft scope');
+expect(mcp_chatgpt_validate_draft_args(['id' => 4, 'seo' => ['noindex' => true]], $schema), 'SEO patch');
+foreach ([
+    ['id' => '4'], ['id' => 0], ['id' => 4, 'status' => 'published'], ['id' => 4, 'published_at' => 'tomorrow'],
+    ['id' => 4, 'site' => 'other'], ['id' => 4, 'slug' => 'other'], ['id' => 4, 'seo' => ['image' => 'https://example.com/']],
+    ['id' => 4, 'seo' => ['noindex' => 'true']],
+] as $args) {
+    expect(!mcp_chatgpt_validate_draft_args($args, $schema), 'Reject malformed or forbidden draft parameter');
+}
+foreach (['draft_create', 'draft_update'] as $name) {
+    expect(isset(mcp_chatgpt_dispatch($rpc + ['method' => 'tools/call', 'params' => ['name' => $name, 'arguments' => ['title' => 'Test']]])['error']), "Read scope rejects $name");
+}
+foreach (['post_save', 'post_delete', 'post_restore', 'publish_now', 'media_upload'] as $name) {
+    expect(isset(mcp_chatgpt_dispatch($rpc + ['method' => 'tools/call', 'params' => ['name' => $name]], true)['error']), "Draft scope rejects $name");
+}
+echo "MCP read and draft contracts OK\n";

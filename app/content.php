@@ -1316,7 +1316,7 @@ final class SiteService
         return $this->decodePost(row('SELECT * FROM posts WHERE site_id = ? AND id = ?', [$this->id(), $id]));
     }
 
-    public function savePost(array $in, ?int $id = null): array
+    public function savePost(array $in, ?int $id = null, bool $draftOnly = false): array
     {
         $cur = $id ? $this->postById($id) : null;
         if ($id && !$cur) throw new UwError('Entrada no encontrada');
@@ -1330,6 +1330,15 @@ final class SiteService
         if ($dup) throw new UwError("Ya existe una entrada con el slug '$slug' en el idioma «{$lang}»");
         $status = (string) ($in['status'] ?? $cur['status'] ?? 'draft');
         if (!in_array($status, ['draft', 'published'], true)) throw new UwError("status debe ser 'draft' o 'published'");
+        if ($draftOnly && ($status !== 'draft' || ($cur && (
+            $cur['status'] !== 'draft' || $cur['published_at'] !== null ||
+            val("SELECT 1 FROM content_versions WHERE site_id = ? AND kind = 'post'
+                AND lang = ? AND slug = ? AND json_extract(data, '$.status') = 'published' LIMIT 1",
+                [$this->id(), $cur['lang'], $cur['slug']])
+        )))) {
+            throw new UwError('Solo se admiten borradores sin historial de publicación.');
+        }
+
 
         $tags = $in['tags'] ?? $cur['tags'] ?? [];
         if (is_string($tags)) $tags = explode(',', $tags);
@@ -1367,7 +1376,8 @@ final class SiteService
         $oldPath = $cur ? (string) $cur['public_path'] : '';
         if ($cur && $cur['status'] === 'published' && $status === 'published' && rtrim($oldPath, '/') !== rtrim($newPath, '/'))
             $this->lastRedirect = redirect_add($this->id(), $cur['lang'], $oldPath, $newPath);
-        audit($this->id(), $cur ? 'post.update' : 'post.create', $slug, ['status' => $status]);
+        $action = $draftOnly ? 'mcp.draft' : 'post';
+        audit($this->id(), $action . ($cur ? '.update' : '.create'), $slug, ['status' => $status]);
         if ($status === 'published' && $changed) indexnow_queue($this, $newPath);
         if ($cur && $cur['status'] === 'published' && $status !== 'published') indexnow_queue($this, $oldPath);
         return $this->postById($id);

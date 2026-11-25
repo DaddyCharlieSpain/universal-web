@@ -211,3 +211,73 @@ Cloudflare mostró una réplica activa y dos rutas. Tras el reinicio,
 los metadatos de MCP y OAuth respondieron por HTTPS con 200 y
 `post_list` volvió a funcionar desde ChatGPT con cuatro entradas de
 prueba. El despliegue MCP en producción requiere autorización específica.
+
+## Fase 2: borradores exclusivamente en el laboratorio
+
+La rama `ops/chatgpt-mcp-drafts` mantiene el perfil de lectura por defecto.
+Para habilitar escritura, usar la base sintética de
+`universal-web-mcp-lab`, el host `mcp-staging.carlosbarcelo.es` y el
+realm `uw-mcp-staging`. Activar `chatgpt_mcp.drafts_enabled = true`
+solo en el archivo privado de configuración de ese laboratorio.
+Mantener intactas las credenciales, rutas y unidades de producción.
+
+Crear en ese realm el ámbito de cliente OIDC `uw:drafts:write` con
+`include.in.token.scope=true`. Asignarlo como opcional a
+`chatgpt-uw-staging` y solicitarlo explícitamente en la aplicación de
+staging, junto a `uw:read`. Una sesión con solo `uw:read` conserva
+el catálogo de lectura. Renovar el consentimiento y actualizar las
+herramientas para usar la escritura. Confirmar que siguen vigentes
+PKCE, audiencia, emisor, cliente y sujeto de staging.
+
+- `draft_create` crea por título con estado borrador. Un slug
+  duplicado se rechaza. `draft_update` modifica por ID, mantiene el
+  slug e idioma existentes y conserva los campos omitidos.
+- `post_get` devuelve los metadatos SEO. Los campos editables con
+  `draft_update` son `seo.title`, `seo.description` y `seo.noindex`.
+- El guardado verifica el estado y los indicios de publicación
+  anterior dentro de una transacción SQLite `BEGIN IMMEDIATE`.
+  Rechaza entradas publicadas, fechas de publicación existentes e
+  historial conservado con estado publicado. Las herramientas
+  genéricas de borrado, publicación, reprogramación y subida quedan
+  fuera de la lista permitida.
+- `mcp.draft.create` y `mcp.draft.update` quedan en `audit_log` con
+  el actor de la vinculación MCP y el slug. Las ediciones conservan
+  historial de contenido. Estas acciones no marcan `site_publish`
+  como pendiente y un guardado de borrador no encola IndexNow.
+- La biblioteca sintética se puede inspeccionar con `media_list`.
+  La fase no admite subidas, descargas remotas ni edición de portada,
+  audio o imagen SEO mediante los campos dedicados. Para una fase
+  posterior, valorar referencias por ID de la biblioteca del mismo
+  sitio y cargas locales en un directorio exclusivo de staging, con
+  MIME real, límites y rechazo de URL remota en el servidor.
+
+### Prueba de aceptación y recuperación
+
+Ejecutar los contratos y la prueba de persistencia en un directorio
+de datos vacío, con PHP CLI y SQLite:
+
+```bash
+php tests/mcp-chatgpt-readonly.php
+test_data=$(mktemp -d)
+(UW_DATA="$test_data" php tests/mcp-chatgpt-drafts.php)
+rm -rf -- "$test_data"
+```
+
+La prueba de persistencia usa una instalación sintética, un registro
+centinela de publicación estática sin credenciales y una entrada
+publicada inmóvil. Comprueba creación, edición SEO parcial, auditoría,
+rechazo con solo lectura, edición de publicados, publicación y borrado.
+Tras habilitar el ámbito en Keycloak, repetir desde ChatGPT con un
+borrador sintético. Comprobar la entrada y su estado mediante
+`post_get`. Revisar la fila de publicación y los eventos de auditoría
+del laboratorio. La prueba por OAuth y HTTP es independiente del
+contrato PHP.
+
+Para cortar la escritura, desactivar `drafts_enabled` en el
+laboratorio. Quitar el ámbito opcional del cliente y revocar su
+concesión o sesión offline para impedir nuevas renovaciones. La lectura
+puede volver a vincularse con `uw:read`. Para recuperar el contenido,
+revisar el historial desde el panel local de laboratorio o restaurar
+una copia de su SQLite. Para revertir código, recuperar los archivos
+de la revisión de solo lectura y conservar la base sintética y la
+auditoría. No aplicar esa restauración a producción.
