@@ -32,6 +32,7 @@ require UW_ROOT . '/app/themes.php';
 require UW_ROOT . '/app/update.php';
 require_once UW_ROOT . '/app/update_finish.php';
 require UW_ROOT . '/app/mcp.php';
+require UW_ROOT . '/app/mcp-chatgpt.php';
 require UW_ROOT . '/app/admin.php';
 require UW_ROOT . '/app/install.php';
 
@@ -80,6 +81,10 @@ function uw_handle_request(): void
         }
         security_headers($path);
         if ($path === '/install/conectar-adri') { install_connect_handle($method); return; }
+        if (in_array($path, ['/mcp/chatgpt', '/.well-known/oauth-protected-resource/mcp/chatgpt'], true)) {
+            mcp_chatgpt_handle($path, $method);
+            return;
+        }
         if ($path === '/mcp' || $path === '/admin' || str_starts_with($path, '/admin/')) {
             // Con un dominio exclusivo para el panel, en los dominios de las webs /admin y /mcp no existen:
             // el JavaScript personalizado de una web nunca comparte origen con el panel.
