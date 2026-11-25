@@ -32,6 +32,8 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 http = build_opener(ProxyHandler({}), NoRedirect())
+# Match the CMS cURL request, which does not set a User-Agent.
+http.addheaders = []
 
 
 def request(url, data=None, headers=None):
@@ -169,10 +171,17 @@ echo json_encode([$m['introspection_id'], $m['introspection_secret']]);
                               "Host": "auth-staging.carlosbarcelo.es", "X-Forwarded-Proto": "https",
                               "X-Forwarded-Host": "auth-staging.carlosbarcelo.es", "X-Forwarded-Port": "443"})
 
-            def inspect(token):
-                return request(f"{ISSUER}/protocol/openid-connect/token/introspect",
-                               urlencode({"token": token, "token_type_hint": "access_token"}).encode(),
-                               {"Content-Type": "application/x-www-form-urlencoded", "Authorization": "Basic " + authorization})
+            def inspect(token, public=True):
+                endpoint = f"{ISSUER}/protocol/openid-connect" if public else protocol
+                headers = {"Content-Type": "application/x-www-form-urlencoded",
+                           "Authorization": "Basic " + authorization}
+                if not public:
+                    headers.update({"Host": "auth-staging.carlosbarcelo.es",
+                                    "X-Forwarded-Proto": "https",
+                                    "X-Forwarded-Host": "auth-staging.carlosbarcelo.es",
+                                    "X-Forwarded-Port": "443"})
+                return request(f"{endpoint}/token/introspect",
+                               urlencode({"token": token, "token_type_hint": "access_token"}).encode(), headers)
 
             def read(token):
                 return request(f"http://127.0.0.1:{port}/mcp/chatgpt", json.dumps({
@@ -199,6 +208,11 @@ echo json_encode([$m['introspection_id'], $m['introspection_secret']]);
                 error = claims.get("error")
                 log(label + "_introspection", http=status, active=claims.get("active"),
                     oauth_error=error if isinstance(error, str) and error in known_errors else "-")
+                if status != 200:
+                    local_status, local_claims = inspect(token, public=False)
+                    log(label + "_keycloak_loopback", http=local_status, active=local_claims.get("active"))
+                    mcp_status, _ = read(token)
+                    log(label + "_mcp_curl", http=mcp_status)
                 require(status == 200 and claims.get("active") is True, "valid_token_inactive")
                 require(0 < claims["exp"] - time.time() <= 60, "unexpected_token_lifetime")
                 status, response = read(token)
