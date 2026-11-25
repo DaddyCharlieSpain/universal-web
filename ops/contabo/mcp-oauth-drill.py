@@ -110,14 +110,14 @@ def main():
                 "standardFlowEnabled": False, "implicitFlowEnabled": False,
                 "directAccessGrantsEnabled": False, "serviceAccountsEnabled": True,
                 "fullScopeAllowed": False, "defaultClientScopes": ["basic"], "optionalClientScopes": [],
-                "attributes": {"access.token.lifespan": "30"},
+                "attributes": {"access.token.lifespan": "30", "resource_url": RESOURCE},
             })
             require(bool(client_id), "disposable_client_not_created")
             log("disposable_client", created=client)
             admin("update", f"clients/{client_id}/optional-client-scopes/{scopes['uw:read']}", "-r", REALM, "-n")
             admin("create", f"clients/{client_id}/protocol-mappers/models", "-r", REALM, "-f", "-", payload={
                 "name": "staging MCP audience", "protocol": "openid-connect", "protocolMapper": "oidc-audience-mapper",
-                "config": {"included.client.audience": RESOURCE, "access.token.claim": "true",
+                "config": {"included.custom.audience": RESOURCE, "access.token.claim": "true",
                            "introspection.token.claim": "true"},
             })
             secret = json.loads(admin("get", f"clients/{client_id}/client-secret", "-r", REALM))["value"]
@@ -181,12 +181,24 @@ echo json_encode([$m['introspection_id'], $m['introspection_secret']]);
                 }).encode(), {"Host": MCP_HOST, "Content-Type": "application/json", "Authorization": "Bearer " + token})
 
             def issue(label):
-                status, payload = keycloak("token", {"grant_type": "client_credentials", "scope": "uw:read"})
+                status, payload = keycloak("token", {"grant_type": "client_credentials", "scope": "uw:read", "resource": RESOURCE})
                 log(label + "_issue", http=status)
                 token = payload.get("access_token")
                 require(status == 200 and isinstance(token, str), "token_issue_failed")
+                parts = token.split(".")
+                require(len(parts) == 3, "expected_jwt_access_token")
+                encoded = parts[1]
+                unverified = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+                audience = unverified.get("aud", [])
+                audience = [audience] if isinstance(audience, str) else audience
+                audience_ok = isinstance(audience, list) and inspection_id in audience and RESOURCE in audience
+                log(label + "_audience", matches=audience_ok)
+                require(audience_ok, "issued_token_missing_resource_audience")
                 status, claims = inspect(token)
-                log(label + "_introspection", http=status, active=claims.get("active"))
+                known_errors = {"invalid_request", "invalid_client", "invalid_token", "access_denied", "insufficient_scope"}
+                error = claims.get("error")
+                log(label + "_introspection", http=status, active=claims.get("active"),
+                    oauth_error=error if isinstance(error, str) and error in known_errors else "-")
                 require(status == 200 and claims.get("active") is True, "valid_token_inactive")
                 require(0 < claims["exp"] - time.time() <= 60, "unexpected_token_lifetime")
                 status, response = read(token)
