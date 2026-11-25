@@ -82,3 +82,49 @@ Para recuperar, desactivar `enabled`, revocar el token nativo y la concesión
 OAuth y rotar la credencial de introspección si se sospecha exposición.
 Revertir el commit de la rama solo si hace falta retirar los archivos.
 No se introducen tablas ni se modifica el publicador Wrangler en esta fase.
+
+
+## Perfil Keycloak para staging
+
+- Inventariar CPU, memoria disponible, disco, servicios, puertos, runtime
+  de contenedores, PHP y la instalación de staging antes de provisionar.
+  Inspeccionar los realms y los clientes por nombre y configuración desde
+  una sesión administrativa. No exportar secretos ni reutilizar clientes
+  de producción. Reutilizar un cliente solo si está dedicado a este staging,
+  tiene el callback exacto y supera los controles de abajo.
+- Usar un realm y una base de datos aislados y una instalación CMS con
+  contenidos sintéticos. Mantener los servicios administrativos en
+  loopback o red privada. La prueba desde ChatGPT exige una ruta HTTPS
+  aprobada para el MCP y para el inicio de sesión de Keycloak. Evaluar
+  el HTTPS ya disponible o un túnel autorizado; no modificar DNS ni
+  los controles de acceso de producción.
+- En la versión de Keycloak seleccionada, verificar el soporte de
+  `resource-indicators` (experimental en la documentación revisada).
+  Exigir `resource` idéntico en autorización y canje. Registrar el servidor
+  de recursos con `resource_url` igual a la URL canónica completa del MCP
+  y configurar el mapper Audience para el cliente de ChatGPT.
+- Preferir cliente preinscrito con Authorization Code y PKCE S256,
+  sin password grant ni callbacks comodín. Usar la URI literal de la ficha
+  de conexión, que puede ser específica del callback del plugin. Vincular
+  únicamente el alcance `uw:read` y el usuario sintético. No habilitar
+  registro dinámico público para esta prueba.
+- Desde Keycloak 26.6.2 el cliente de introspección debe pertenecer
+  a la audiencia del token. Probar que el cliente confidencial de recursos
+  puede introspectar manteniendo este control. Si el modo RFC 8707 emite
+  solo la URL en aud, comprobar si se puede usar esa URL como ID del
+  cliente confidencial, además de como resource_url. Una respuesta
+  inactive bloquea la conexión; no habilitar excepciones de compatibilidad.
+- Pruebas de aceptación: discovery anuncia S256; se rechazan callback
+  ajeno y resource incorrecto o cambiado en el canje; introspección
+  autenticada devuelve active, iss, sub, client_id, aud, exp y uw:read;
+  el adaptador rechaza otro emisor, sujeto, cliente, audiencia o alcance;
+  ChatGPT enumera herramientas y lee un artículo sintético. Probar la
+  denegación de escritura en staging y que la lectura no encola publicación.
+- Recuperación del staging: desactivar el perfil, revocar sesiones y
+  credenciales de prueba, cerrar el ingreso dedicado y detener solamente
+  la instancia de Keycloak de staging. Conservar la copia de configuración
+  anterior. No tocar servicios productivos.
+
+Referencias: https://www.keycloak.org/securing-apps/mcp-authz-server,
+https://www.keycloak.org/docs/latest/upgrading/ y
+https://developers.openai.com/plugins/build/auth.
