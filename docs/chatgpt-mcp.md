@@ -397,7 +397,7 @@ SQLite y sus claves foráneas. El evento 27 registró la subida del medio
 ID 7 y el evento 28 registró la edición posterior del borrador ID 6.
 Las filas publicadas y las filas de `site_publish` del laboratorio
 coincidieron con la copia previa a la activación multimedia.
-Queda por ensayar caducidad y revocación real con un token desechable.
+El ensayo posterior de caducidad y revocación figura en el cierre OAuth.
 
 ### Ensayo OAuth con credenciales desechables
 
@@ -425,7 +425,30 @@ por minuto en archivos privados y con bloqueo, separados de SQLite.
 Así un rechazo no modifica la base para actualizar los contadores.
 El espacio queda limitado a 4096 grupos. Si dos IP coinciden en un
 grupo, comparten su cuota. La prueba local cubre saturación y reinicio
-de la ventana. Aún falta ejecutar el ensayo completo en Contabo.
+de la ventana. El ensayo completo pasó en Contabo con la revisión `7dcce62`, en una
+copia de trabajo aislada. El servicio activo conserva su revisión anterior.
+
+### Cierre OAuth en Contabo
+
+El 25 de noviembre de 2026, entre 21:37:28 y 21:38:12 UTC,
+la revisión `7dcce62` superó el ensayo con un cliente y cuenta de
+servicio desechables del realm `uw-mcp-staging`.
+
+| Comprobación | Evidencia |
+| --- | --- |
+| Emisión y audiencia | Ambos tokens: HTTP 200 y audiencia esperada |
+| Lectura válida | Ambos tokens: introspección 200, activo; MCP 200, autorizado |
+| Caducidad real | Introspección 200, inactivo; MCP 401 |
+| Revocación real antes de vencer | Revocación 200; introspección 200, inactivo; MCP 401 |
+| SQLite | Integridad y claves foráneas correctas; todas las filas intactas |
+| Limpieza | Cliente de prueba eliminado y ausencia comprobada |
+
+La traza registró horas, códigos HTTP y decisiones, sin incluir tokens
+ni secretos. El ensayo no cambió el cliente, usuarios ni sesiones de
+ChatGPT. Los intentos anteriores se detuvieron antes de probar caducidad
+por un 403 en la introspección pública. La solicitud del ensayo se
+alineó con la del CMS y la ejecución final superó todas las comprobaciones
+manteniendo la validación de audiencia.
 
 ### Plan de cambio productivo para revisión
 
