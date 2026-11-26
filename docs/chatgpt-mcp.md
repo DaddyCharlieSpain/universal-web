@@ -502,3 +502,78 @@ de lectura incluye borradores: si se desea probar solo con contenido
 publicado, debe aplicarse y verificarse ese límite antes de enlazar
 ChatGPT. No se verificaron esas condiciones sobre datos de producción
 durante esta revisión.
+
+### Primera prueba productiva autorizada para preparación
+
+El perfil fuera del laboratorio se limita por defecto a un catálogo
+de páginas y artículos publicados. Las cuatro herramientas son
+`page_list`, `page_get`, `post_list` y `post_get`. Devuelven solamente
+slug, título, idioma, ruta pública y, en artículos, fecha de
+publicación. El texto y los medios ya publicados se consultan en
+la web pública. El perfil no entrega bloques, Markdown, traducciones
+de borradores, inventario multimedia, mensajes ni configuración.
+Un token con ámbitos adicionales tampoco amplía el catálogo.
+En staging se puede ensayar con `chatgpt_mcp.published_catalog=true`
+en una copia de trabajo privada y una sesión de prueba.
+
+Las pruebas SQLite con datos sintéticos comprueban listado y consulta
+por slug, rechazo de borradores y artículos futuros, filtrado de campos,
+rechazo de herramientas fuera del catálogo y que la fila de
+`site_publish` no cambia. El ensayo real de caducidad y revocación
+está registrado arriba. Repetir los contratos con PHP nativo de
+Contabo sobre la candidata antes de enlazar la identidad productiva.
+
+#### Evidencia administrativa previa
+
+- Identificar el árbol activo de Contabo en `/var/www/universal-web`.
+  Registrar versión, esquema declarado y revisión Git si existe;
+  para una release sin Git, registrar las huellas SHA-256 de
+  `app/core.php` y `app/bootstrap.php` y contrastarlas con el
+  manifiesto de la release. Registrar el estado de PHP-FPM,
+  Nginx y del publicador configurado, sin volcar variables.
+- Confirmar que la copia reciente procede de la instalación activa.
+  Verificar hashes de la copia y recuperar SQLite y medios en un
+  directorio privado independiente. Seguir el procedimiento de
+  `ops/contabo/README.md`. Verificar `integrity_check`,
+  `foreign_key_check`, esquema, tema y presencia de configuración.
+  Si el backup externo omite configuración o tema, localizar y
+  comprobar sus copias privadas por separado. Conservar el árbol
+  anterior activo hasta disponer de una ruta de vuelta verificada.
+- En Pages, abrir `carlos-barcelo-personal` → Implementaciones.
+  Registrar ID y URL del despliegue productivo actual y de un
+  despliegue productivo exitoso anterior disponible para rollback.
+  La revisión del menú no ejecuta el rollback. La URL pública por
+  sí sola no acredita que una revisión anterior siga retenida.
+- Preparar un realm independiente `uw-mcp-prod`, un usuario dedicado
+  y un cliente de código `chatgpt-uw-prod` con PKCE S256, callback
+  exacto de ChatGPT y solo `uw:read` como ámbito MCP. Preparar una
+  credencial confidencial distinta para introspección y un enlace
+  local de solo lectura al sitio correcto. Separar persistencia y
+  credenciales de las de staging. Verificar coincidencia exacta
+  de emisor, audiencia, sujeto y cliente. Crear secretos solo en
+  el entorno administrativo autorizado. La rama no contiene valores.
+- La primera opción de red usa el host CMS existente, sin DNS nuevo.
+  En origen, definir ubicaciones exactas para `/mcp/chatgpt` y
+  `/.well-known/oauth-protected-resource/mcp/chatgpt`. Ubicar
+  el realm en un prefijo aislado y permitir explícitamente el
+  descubrimiento, el flujo OIDC y sus recursos; conservar cerrados
+  administración de Keycloak, realm master y el MCP nativo.
+  Revisar con el administrador qué rutas exactas quedarían fuera
+  del login interactivo de Access. Solo el endpoint MCP debe
+  aceptar el Bearer propio del recurso. Mantener la política del
+  panel y el rechazo por defecto en el resto del host. Confirmar
+  el diseño con una prueba aislada y autorización antes de aplicar
+  cualquier excepción de Access.
+
+#### Desactivación y vuelta atrás
+
+Conservar la configuración anterior y establecer una vía de
+desactivación inmediata: poner `chatgpt_mcp.enabled=false` en el
+config privado, cerrar las rutas específicas que se hubieran
+habilitado, recargar el servicio afectado y revocar la concesión
+productiva. Verificar que el MCP deja de responder a tokens válidos,
+que el panel sigue protegido por Access y que la portada pública
+sigue disponible. Volver al árbol anterior si falla la versión del
+CMS. Restaurar SQLite solo ante una incidencia de datos y con la
+copia verificada. Usar el rollback de Pages únicamente si la web
+estática se vio afectada. La primera prueba MCP no ejecuta Wrangler.

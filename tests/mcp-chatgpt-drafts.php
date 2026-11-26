@@ -26,6 +26,10 @@ Actor::set('token', 1, 'MCP draft test');
 $published = $svc->savePost(['title' => 'Published fixture']);
 q("UPDATE posts SET status = 'published', published_at = ? WHERE id = ?", [now(), $published['id']]);
 $previous = $svc->savePost(['title' => 'Previously published fixture']);
+$future = $svc->savePost(['title' => 'Future fixture']);
+q("UPDATE posts SET status = 'published', published_at = ? WHERE id = ?", ['2099-01-01 00:00:00', $future['id']]);
+$privatePage = $svc->savePage(['title' => 'Private fixture', 'status' => 'draft', 'blocks' => []]);
+$publicPage = $svc->savePage(['title' => 'Public fixture', 'status' => 'published', 'blocks' => []]);
 $old = row('SELECT * FROM posts WHERE id = ?', [$previous['id']]);
 history_snapshot($siteId, 'post', array_replace($old, ['status' => 'published']));
 q("INSERT INTO site_publish (site_id, config, dirty) VALUES (?, ?, 0)
@@ -84,6 +88,29 @@ expect((int) val("SELECT COUNT(*) FROM audit_log WHERE site_id = ? AND action = 
 expect(db()->query('PRAGMA integrity_check')->fetchAll(PDO::FETCH_COLUMN) === ['ok'], 'SQLite integrity');
 expect(db()->query('PRAGMA foreign_key_check')->fetchAll() === [], 'SQLite foreign keys');
 if (is_file(UW_PUBLIC . $media['url'])) unlink(UW_PUBLIC . $media['url']);
+$catalog = static fn(string $name, array $args = []): array => mcp_chatgpt_dispatch([
+    'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+    'params' => ['name' => $name, 'arguments' => $args],
+], true, true, true);
+$listed = mcp_chatgpt_dispatch(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/list'], true, true, true);
+expect(array_column($listed['result']->tools, 'name') === ['page_list', 'page_get', 'post_list', 'post_get'], 'Public catalog allowlist');
+$articles = $catalog('post_list', ['offset' => 0])['result']['structuredContent']['posts'];
+expect(array_column($articles, 'slug') === [$published['slug']], 'Exclude draft and future articles from listings');
+$article = $catalog('post_get', ['slug' => $published['slug']])['result']['structuredContent']['post'];
+expect(!isset($article['content'], $article['cover_image']) && count($article) === 5, 'Public article metadata projection');
+$pages = $catalog('page_list')['result']['structuredContent']['pages'];
+expect(!in_array($privatePage['slug'], array_column($pages, 'slug'), true), 'Exclude draft pages from listings');
+expect(isset($catalog('page_get', ['slug' => $publicPage['slug']])['result']), 'Public page listed by slug');
+foreach ([$draft, $future] as $fixture) {
+    expect(isset($catalog('post_get', ['slug' => $fixture['slug']])['error']), 'Reject direct non-public article lookup');
+}
+expect(isset($catalog('page_get', ['slug' => $privatePage['slug']])['error']), 'Reject direct private page lookup');
+expect(isset($catalog('post_list', ['status' => 'draft'])['error']), 'Reject draft filter');
+foreach (['media_list', 'messages_list', 'site_get', 'draft_create', 'draft_cover_set', 'post_delete', 'publish_now'] as $name) {
+    expect(isset($catalog($name)['error']), 'Catalog rejects ' . $name);
+}
+expect($beforePublish === row('SELECT * FROM site_publish WHERE site_id = ?', [$siteId]), 'Catalog reads leave publisher unchanged');
+
 $rateNow = 1800;
 for ($request = 0; $request < 120; $request++) {
     expect(mcp_chatgpt_rate_limit('127.0.0.1', $rateNow), 'Requests within rate limit');

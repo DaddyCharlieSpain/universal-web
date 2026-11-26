@@ -50,13 +50,13 @@ $writeList = mcp_chatgpt_dispatch($rpc + ['method' => 'tools/list'], true)['resu
 expect(array_column($writeList, 'name') === ['post_get', 'draft_create', 'draft_update'], 'Draft catalog requires write scope');
 $schema = $writeList[2]['inputSchema'];
 expect($writeList[2]['securitySchemes'][0]['scopes'] === ['uw:read', 'uw:drafts:write'], 'Separate draft scope');
-expect(mcp_chatgpt_validate_draft_args(['id' => 4, 'seo' => ['noindex' => true]], $schema), 'SEO patch');
+expect(mcp_chatgpt_validate_args(['id' => 4, 'seo' => ['noindex' => true]], $schema), 'SEO patch');
 foreach ([
     ['id' => '4'], ['id' => 0], ['id' => 4, 'status' => 'published'], ['id' => 4, 'published_at' => 'tomorrow'],
     ['id' => 4, 'site' => 'other'], ['id' => 4, 'slug' => 'other'], ['id' => 4, 'seo' => ['image' => 'https://example.com/']],
     ['id' => 4, 'seo' => ['noindex' => 'true']],
 ] as $args) {
-    expect(!mcp_chatgpt_validate_draft_args($args, $schema), 'Reject malformed or forbidden draft parameter');
+    expect(!mcp_chatgpt_validate_args($args, $schema), 'Reject malformed or forbidden draft parameter');
 }
 foreach (['draft_create', 'draft_update'] as $name) {
     expect(isset(mcp_chatgpt_dispatch($rpc + ['method' => 'tools/call', 'params' => ['name' => $name, 'arguments' => ['title' => 'Test']]])['error']), "Read scope rejects $name");
